@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Claude 使用量监控</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Helvetica Neue', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(20px);
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+            max-width: 500px;
+            width: 100%;
+            text-align: center;
+        }
+
+        .title {
+            font-size: 28px;
+            font-weight: 700;
+            color: #1d1d1f;
+            margin-bottom: 30px;
+            letter-spacing: -0.5px;
+        }
+
+        .usage-card {
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            border-radius: 16px;
+            padding: 30px;
+            margin-bottom: 20px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .usage-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, #007AFF, #5856D6, #AF52DE);
+        }
+
+        .usage-amount {
+            font-size: 48px;
+            font-weight: 800;
+            color: #007AFF;
+            margin-bottom: 10px;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .usage-label {
+            font-size: 16px;
+            color: #6e6e73;
+            font-weight: 500;
+            margin-bottom: 15px;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: rgba(0, 0, 0, 0.1);
+            border-radius: 4px;
+            overflow: hidden;
+            margin-bottom: 15px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #007AFF, #5856D6);
+            border-radius: 4px;
+            transition: width 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+            width: 0%;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .stat-item {
+            background: rgba(255, 255, 255, 0.8);
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 24px;
+            font-weight: 700;
+            color: #1d1d1f;
+            margin-bottom: 5px;
+        }
+
+        .stat-label {
+            font-size: 14px;
+            color: #6e6e73;
+            font-weight: 500;
+        }
+
+        .refresh-btn {
+            background: linear-gradient(135deg, #007AFF, #5856D6);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            padding: 15px 30px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-top: 20px;
+        }
+
+        .refresh-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(0, 122, 255, 0.3);
+        }
+
+        .refresh-btn:active {
+            transform: translateY(0);
+        }
+
+        .last-updated {
+            font-size: 12px;
+            color: #8e8e93;
+            margin-top: 15px;
+        }
+
+        .loading {
+            opacity: 0.6;
+            pointer-events: none;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .loading .usage-amount {
+            animation: pulse 1.5s infinite;
+        }
+
+        @media (max-width: 480px) {
+            .container {
+                padding: 30px 20px;
+            }
+            
+            .usage-amount {
+                font-size: 36px;
+            }
+            
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="title">Claude 今日消耗</h1>
+        
+        <div class="usage-card" id="usageCard">
+            <div class="usage-amount" id="usageAmount">$0.00</div>
+            <div class="usage-label">今日消耗金额</div>
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill"></div>
+            </div>
+            <div class="usage-label" id="progressText">0% / 每日限额</div>
+        </div>
+
+        <div class="stats-grid">
+            <div class="stat-item">
+                <div class="stat-value" id="tokensUsed">0</div>
+                <div class="stat-label">Tokens 使用</div>
+            </div>
+            <div class="stat-item">
+                <div class="stat-value" id="requestCount">0</div>
+                <div class="stat-label">请求次数</div>
+            </div>
+        </div>
+
+        <button class="refresh-btn" id="refreshBtn" onclick="refreshUsage()">
+            刷新数据
+        </button>
+
+        <div class="last-updated" id="lastUpdated">
+            最后更新: --
+        </div>
+    </div>
+
+    <script>
+        // 模拟数据 - 实际使用时需要连接真实的API
+        let currentUsage = {
+            amount: 0,
+            tokens: 0,
+            requests: 0,
+            dailyLimit: 200, // 假设每日限额$200
+            lastUpdated: null
+        };
+
+        // 格式化货币
+        function formatCurrency(amount) {
+            return new Intl.NumberFormat('zh-CN', {
+                style: 'currency',
+                currency: 'USD',
+                minimumFractionDigits: 2
+            }).format(amount);
+        }
+
+        // 格式化数字
+        function formatNumber(num) {
+            return new Intl.NumberFormat('zh-CN').format(num);
+        }
+
+        // 格式化时间
+        function formatTime(date) {
+            return new Intl.DateTimeFormat('zh-CN', {
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+            }).format(date);
+        }
+
+        // 更新UI
+        function updateUI() {
+            const usageAmount = document.getElementById('usageAmount');
+            const tokensUsed = document.getElementById('tokensUsed');
+            const requestCount = document.getElementById('requestCount');
+            const progressFill = document.getElementById('progressFill');
+            const progressText = document.getElementById('progressText');
+            const lastUpdated = document.getElementById('lastUpdated');
+
+            // 更新金额
+            usageAmount.textContent = formatCurrency(currentUsage.amount);
+            
+            // 更新统计
+            tokensUsed.textContent = formatNumber(currentUsage.tokens);
+            requestCount.textContent = formatNumber(currentUsage.requests);
+            
+            // 更新进度条
+            const percentage = Math.min((currentUsage.amount / currentUsage.dailyLimit) * 100, 100);
+            progressFill.style.width = percentage + '%';
+            progressText.textContent = `${percentage.toFixed(1)}% / 每日限额 ${formatCurrency(currentUsage.dailyLimit)}`;
+            
+            // 更新时间
+            if (currentUsage.lastUpdated) {
+                lastUpdated.textContent = `最后更新: ${formatTime(currentUsage.lastUpdated)}`;
+            }
+        }
+
+        // 模拟获取使用量数据
+        async function fetchUsageData() {
+            // 这里应该调用真实的Claude API
+            // 目前使用模拟数据
+            return new Promise((resolve) => {
+                setTimeout(() => {
+                    // 模拟递增的使用量
+                    const increment = Math.random() * 5 + 1;
+                    currentUsage.amount += increment;
+                    currentUsage.tokens += Math.floor(Math.random() * 1000 + 500);
+                    currentUsage.requests += Math.floor(Math.random() * 5 + 1);
+                    currentUsage.lastUpdated = new Date();
+                    
+                    resolve(currentUsage);
+                }, 1000);
+            });
+        }
+
+        // 刷新使用量
+        async function refreshUsage() {
+            const container = document.querySelector('.container');
+            const refreshBtn = document.getElementById('refreshBtn');
+            
+            container.classList.add('loading');
+            refreshBtn.textContent = '刷新中...';
+            
+            try {
+                await fetchUsageData();
+                updateUI();
+            } catch (error) {
+                console.error('获取使用量数据失败:', error);
+            } finally {
+                container.classList.remove('loading');
+                refreshBtn.textContent = '刷新数据';
+            }
+        }
+
+        // 自动刷新
+        function startAutoRefresh() {
+            setInterval(refreshUsage, 30000); // 每30秒自动刷新
+        }
+
+        // 初始化
+        function init() {
+            updateUI();
+            refreshUsage();
+            startAutoRefresh();
+        }
+
+        // 页面加载完成后初始化
+        document.addEventListener('DOMContentLoaded', init);
+
+        // 添加键盘快捷键
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'r' && (e.metaKey || e.ctrlKey)) {
+                e.preventDefault();
+                refreshUsage();
+            }
+        });
+    </script>
+</body>
+</html>
