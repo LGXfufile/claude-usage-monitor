@@ -270,19 +270,24 @@
 
         // 模拟获取使用量数据
         async function fetchUsageData() {
-            // 这里应该调用真实的Claude API
-            // 目前使用模拟数据
+            // 使用本地模拟数据，不依赖后端API
             return new Promise((resolve) => {
                 setTimeout(() => {
-                    // 模拟递增的使用量
-                    const increment = Math.random() * 5 + 1;
-                    currentUsage.amount += increment;
-                    currentUsage.tokens += Math.floor(Math.random() * 1000 + 500);
-                    currentUsage.requests += Math.floor(Math.random() * 5 + 1);
+                    // 基于当前时间生成模拟数据
+                    const now = new Date();
+                    const hours = now.getHours();
+                    const minutes = now.getMinutes();
+                    
+                    // 根据时间模拟递增的使用量
+                    const timeBasedUsage = hours * 2 + minutes * 0.05;
+                    
+                    currentUsage.amount = Math.min(30.54 + timeBasedUsage, 50);
+                    currentUsage.tokens = Math.min(208955 + (timeBasedUsage * 1000), 300000);
+                    currentUsage.requests = Math.min(104 + Math.floor(timeBasedUsage), 200);
                     currentUsage.lastUpdated = new Date();
                     
                     resolve(currentUsage);
-                }, 1000);
+                }, 500);
             });
         }
 
